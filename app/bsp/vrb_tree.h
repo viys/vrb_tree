@@ -22,8 +22,8 @@ typedef int (*rbtree_compare_fn)(void *key_a,  void *key_b);
 typedef struct
 {
     void (*init)(void*, rbtree_compare_fn fn);
-    rbtree_node* (*insert)(void*, void *key, void* data);
-    rbtree_node* (*lookup)(void*, void *key, rbtree_node** pparent);
+    int (*insert)(void*, void *key, void* data);
+    rbtree_node* (*find)(void*, void *key);
     int (*remove)(void*, void *key);
 }RBTREE_IMPLEMENTS;
 
@@ -40,6 +40,7 @@ typedef struct
     void (*set_child)(void* t, rbtree_node* node, rbtree_node* child);
     void (*rotate_left)(void*, rbtree_node* node);
     void (*rotate_right)(void*, rbtree_node* node);
+    rbtree_node* (*lookup)(void*, void *key, rbtree_node** parent);
     // rbtree_node* (*lock)()
 }RBTREE;
 

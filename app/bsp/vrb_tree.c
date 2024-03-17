@@ -10,11 +10,13 @@ void vrb_tree_test(void)
 
 static void vrbtree_set_color(rbtree_node* node, rb_color color)
 {
+    vassert(node != NULL, "");
     node->color = color;
 }
 
 static rb_color vrbtree_get_color(rbtree_node* node)
 {
+    vassert(node != NULL, "");
     return node->color;
 }
 
@@ -24,7 +26,7 @@ static rbtree_node* vrbtree_get_parent(rbtree_node* node)
     return node->parent;
 }
 
-static int is_root(rbtree_node* node)
+int is_root(rbtree_node* node)
 {
     vassert(node != NULL, "");
     return (vrbtree_get_parent(node)==NULL);
@@ -56,23 +58,31 @@ static void vrbtree_set_child(void* t, rbtree_node* node, rbtree_node* child)
     RBTREE* this = (RBTREE*)t;
     int ret = 0;
 
-    ret = this->compare(node->key,child->key);
+    vassert(node != NULL, "");
+    vassert(child != NULL, "");
+
+    ret = this->compare(child->key, node->key);
 
     vassert(ret != 0, "");
 
-    if(ret > 0){
+    if(ret < 0){
+        // printf("%s is %s left child\r\n", child->key, node->key);
         node->left = child;
     }else{
         node->right = child;
+        // printf("%s is %s right child\r\n", child->key, node->key);
     }
 }
 
 static void vrbtree_rotate_left(void* t, rbtree_node* node)
 {
+    vassert(node != NULL, "");
+
     RBTREE* this = (RBTREE*)t;
     rbtree_node* p = node;
     rbtree_node* q = node->right;
     rbtree_node* parent = node->parent;
+
 
     if(parent == NULL){
         this->root = q;
@@ -82,39 +92,48 @@ static void vrbtree_rotate_left(void* t, rbtree_node* node)
         else
             parent->right = q;
     }
-    this->set_parent(parent,q);
-    this->set_parent(q,p);
+
+    this->set_parent(q, parent);
+    this->set_parent(p, q);
 
     p->right = q->left;
-    if(q->left)
-        this->set_parent(p,q->left);
+    if(q->left){
+        printf("set_parent %d\r\n", 4);
+        this->set_parent(q->left, p);
+    }
     q->left = p;
 }
 
 static void vrbtree_rotate_right(void* t, rbtree_node *node)
 {
+    vassert(node != NULL, "");
+
     RBTREE* this = (RBTREE*)t;
     rbtree_node *p = node;
     rbtree_node *q = node->left; /* can't be NULL */
     rbtree_node *parent = this->get_parent(p);
 
-    if (!is_root(p)) {
-        if (parent->left == p)
+    if (this->get_parent(p)){
+        if(parent->left == p){
             parent->left = q;
-        else
+        }else{
             parent->right = q;
-    } else
+        }
+    }else{
         this->root = q;
-    this->set_parent(parent, q);
-    this->set_parent(q, p);
+    }
+        
+    this->set_parent(q, parent);
+    this->set_parent(p, q);
 
     p->left = q->right;
-    if (p->left)
-        this->set_parent(p, p->left);
+    if (p->left){
+        this->set_parent(p->left, p);
+    }
     q->right = p;
 }
 
-rbtree_node* vrbtree_lookup(void* t, void* key, rbtree_node** parent)
+rbtree_node* vrbtree_find(void* t, void* key)
 {
     RBTREE* this = (RBTREE*)t;
     int ret = 0;
@@ -122,18 +141,41 @@ rbtree_node* vrbtree_lookup(void* t, void* key, rbtree_node** parent)
 
     while(current){
         ret = this->compare(key, current->key);
-        // vassert(1, "%s\r\n", current->key);
+        
         if(ret == 0){
             return current;
         }else{
-            if(parent != NULL){
+            if (ret < 0){
+                current = current->left;
+            }else{
+                current = current->right;
+            }
+        }
+    };
+
+    return NULL;
+}
+
+static rbtree_node* vrbtree_lookup(void* t, void* key, rbtree_node** parent)
+{
+    RBTREE* this = (RBTREE*)t;
+    int ret = 0;
+    rbtree_node *current = this->root;
+
+    while(current){
+        ret = this->compare(key, current->key);
+        
+        if(ret == 0){
+            return current;
+        }else{
+            if(parent != NULL)
+            {
                 *parent = current;
             }
-
-            if (ret > 0){
-                current = current->right;
-            }else{
+            if (ret < 0){
                 current = current->left;
+            }else{
+                current = current->right;
             }
         }
     };
@@ -144,35 +186,40 @@ rbtree_node* vrbtree_lookup(void* t, void* key, rbtree_node** parent)
 void vrbtree_init(void* t, rbtree_compare_fn fn)
 {
     RBTREE* this = (RBTREE*)t;
-    vassert(this!=NULL, "RBTREE init success\r\n");
+    vassert(this!=NULL, "");
 
     this->compare = fn;
     this->root = NULL;
 }
 
-rbtree_node* vrbtree_insert(void* t, void *key, void* data)
+static int vrbtree_insert(void* t, void *key, void* data)
 {
     RBTREE* this = (RBTREE*)t;
-    rbtree_node* node = this->creat_node(key,data);
+    rbtree_node * node = NULL;
     rbtree_node* samenode = NULL;
     rbtree_node* parent = NULL;
 
-    samenode = this->api.lookup(this, key, &parent);
+    samenode = this->lookup(this, key, &parent);
+    
     if(samenode != NULL){
         vassert(samenode == NULL, "");
+        return -1;
     }
-    
+
+    node = this->creat_node(key, data);
     node->left = node->right = NULL;
     this->set_color(node, RED);
     this->set_parent(node, parent);
 
-    if(parent == NULL){
+    if(parent == NULL)
         this->root = node;
-    }else{
-        this->set_child(this, parent, node);
+    else
+    {
+        this->set_child(this,parent,node);
     }
 
-    while((parent = this->get_parent(node)) != NULL && parent->color == RED){
+    while((parent = this->get_parent(node)) != NULL && parent->color == RED)
+    {
         rbtree_node* grandpa = this->get_parent(parent);//grandpa must be existed 
         //because root is black ,and parent is red,
         //parent can not be root of tree. and parent is red,so grandpa must be black
@@ -226,8 +273,92 @@ rbtree_node* vrbtree_insert(void* t, void *key, void* data)
     }
 
     this->set_color(this->root, BLACK);
-    return NULL;
+    return 0;
 }
+
+// {
+//     RBTREE* this = (RBTREE*)t;
+//     rbtree_node* node = this->creat_node(key,data);
+//     rbtree_node* samenode = NULL;
+//     rbtree_node* parent = NULL;
+
+//     samenode = this->api.lookup(this, key, &parent);
+//     if(samenode != NULL){
+//         vassert(samenode == NULL, "");
+//         return samenode;
+//     }
+    
+//     node->left = node->right = NULL;
+//     this->set_color(node, RED);
+//     printf("set_parent %d\r\n", 8);
+//     this->set_parent(node, parent);
+
+//     if(parent == NULL){
+//         this->root = node;
+//     }else{
+//         this->set_child(this, parent, node);
+//     }
+
+//     while((parent = this->get_parent(node)) != NULL && parent->color == RED){
+//         rbtree_node* grandpa = this->get_parent(parent);//grandpa must be existed 
+//         //because root is black ,and parent is red,
+//         //parent can not be root of tree. and parent is red,so grandpa must be black
+//         if(parent == grandpa->left)
+//         {
+//             rbtree_node* uncle = grandpa->right;
+//             if(uncle && this->get_color(uncle) == RED)
+//             {
+//                 this->set_color(grandpa, RED);
+//                 this->set_color(parent, BLACK);
+//                 this->set_color(uncle, BLACK);
+//                 node = grandpa;
+//             }
+//             else
+//             {
+//                 if(node == parent->right )
+//                 {
+//                     printf("rotate_left %d\r\n", 4);
+//                     this->rotate_left(this, parent);
+//                     node = parent;
+//                     parent = this->get_parent(parent);
+//                 }
+//                 this->set_color(parent, BLACK);
+//                 this->set_color(grandpa, RED);
+//                 printf("rotate_right %d\r\n", 1);
+//                 this->rotate_right(this, grandpa);
+//             }
+
+//         }
+//         else
+//         {
+//             rbtree_node* uncle = grandpa->left;
+//             if(uncle && uncle->color == RED)
+//             {
+//                 this->set_color(grandpa, RED);
+//                 this->set_color(parent, BLACK);
+//                 this->set_color(uncle, BLACK);
+//                 node = grandpa;
+//             }
+//             else
+//             {
+//                 if(node == parent->left)
+//                 {
+//                     printf("rotate_right %d\r\n", 2);
+//                     this->rotate_right(this, parent);
+//                     node = parent;
+//                     parent = this->get_parent(node);
+//                 }
+//                 this->set_color(parent, BLACK);
+//                 this->set_color(grandpa, RED);
+//                 printf("rotate_left %d\r\n", 5);
+//                 this->rotate_left(this, grandpa);
+//             }
+//         }
+//     }
+
+//     this->set_color(this->root, BLACK);
+//     return NULL;
+// }
 
 RBTREE* RBTREE_CTOR(void)
 {
@@ -241,10 +372,11 @@ RBTREE* RBTREE_CTOR(void)
     this->set_child = vrbtree_set_child;
     this->rotate_right = vrbtree_rotate_right;
     this->rotate_left = vrbtree_rotate_left;
+    this->lookup = vrbtree_lookup;
     
     this->api.init = vrbtree_init;
     this->api.insert = vrbtree_insert;
-    this->api.lookup = vrbtree_lookup;
+    this->api.find = vrbtree_find;
 
     return this;
 }
